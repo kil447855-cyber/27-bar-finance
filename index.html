@@ -24,10 +24,9 @@
         .chart-panel h3 { font-size: 0.8rem; color: var(--muted); text-align: center; margin-bottom: 8px; }
         canvas { max-width: 100%; max-height: 220px; }
         .form-panel { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 20px 0; }
-        .form-panel input, .form-panel select { background: #1a3045; border: 1px solid var(--border); color: #fff; padding: 8px; margin: 4px; border-radius: 4px; }
+        .form-panel input, .form-panel select { background: #1a3045; border: 1px solid var(--border); color: #fff; padding: 8px; margin: 4px; border-radius: 4px; width: calc(100% - 16px); }
         .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin: 6px; }
         .btn-primary { background: var(--accent); color: #fff; }
-        .btn-gold { background: var(--gold); color: #111; }
         .footer { text-align: center; color: var(--muted); font-size: 0.7rem; margin-top: 30px; }
     </style>
 </head>
@@ -37,10 +36,8 @@
         <p style="color:var(--muted);">实时同步 Google Sheets · 多人协作</p>
     </div>
 
-    <!-- KPI 卡片区域 -->
     <div class="dashboard-grid" id="kpiGrid"></div>
 
-    <!-- 图表区域 -->
     <div class="charts-row">
         <div class="chart-panel"><h3>📊 成本占比</h3><canvas id="chartCostPie"></canvas></div>
         <div class="chart-panel"><h3>👥 股东出资占比</h3><canvas id="chartCapitalPie"></canvas></div>
@@ -48,10 +45,9 @@
         <div class="chart-panel"><h3>📉 利润趋势</h3><canvas id="chartProfitTrend"></canvas></div>
     </div>
 
-    <!-- 添加支出表单 -->
     <div class="form-panel">
         <h3 style="margin-bottom:10px;">➕ 新增支出记录</h3>
-        <input type="date" id="expDate" placeholder="日期"><br>
+        <input type="date" id="expDate"><br>
         <input type="text" id="expItem" placeholder="项目名称"><br>
         <select id="expCategory">
             <option>房租</option><option>装修</option><option>设备</option><option>酒水采购</option>
@@ -59,12 +55,8 @@
             <option>水电</option><option>网络</option><option>工资</option><option>税费</option><option>杂费</option>
         </select><br>
         <input type="number" id="expAmount" placeholder="金额" step="0.01"><br>
-        <select id="expPayer">
-            <option>侯</option><option>袁</option><option>刘</option>
-        </select><br>
-        <select id="expMethod">
-            <option>微信</option><option>支付宝</option><option>银行转账</option><option>现金</option>
-        </select><br>
+        <select id="expPayer"><option>侯</option><option>袁</option><option>刘</option></select><br>
+        <select id="expMethod"><option>微信</option><option>支付宝</option><option>银行转账</option><option>现金</option></select><br>
         <input type="text" id="expSupplier" placeholder="供应商"><br>
         <select id="expInvoiced"><option>是</option><option>否</option></select>
         <input type="text" id="expInvoiceNo" placeholder="发票号码"><br>
@@ -79,142 +71,232 @@
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
-        // ========== 配置：改成你自己的 Sheety API 基地址 ==========
-        const SHEETY_BASE = 'https://api.sheety.co/4797ea1e764fa7f7da2749095c375093/奈斯酒馆数据库';
-        // 工作表名称必须和 Google Sheets 中的完全一致
+        // ========== 配置 ==========
+        const SHEETY_BASE = 'https://api.sheety.co/4797ea1e764fa7f7da2749095c375093/二七奈斯酒馆 · 财务仪表盘';
+        
+        // 工作表名称（必须与Google Sheets底部标签名完全一致）
         const SHEETS = {
-            shareholders: '股东信息',
-            capital: '股东出资',
-            expenses: '支出明细',
-            budget: '待支出预算',
-            revenue: '营业收入',
-            // 其他表如需读取请在此添加
+            shareholders: '01股东信息',
+            capital: '02股东出资',
+            expenses: '03支出明细',
+            budget: '04待支出预算',
+            assets: '05固定资产',
+            revenue: '08营业收入',
+            profit: '09利润表',
+            cashflow: '07现金流',
+            inventory: '10库存管理'
         };
 
         // ========== 全局数据 ==========
         let globalExpenses = [];
         let globalCapital = [];
         let globalRevenue = [];
+        let globalBudget = [];
+        let globalAssets = [];
+        let globalProfit = [];
+        let globalCashflow = [];
+        let globalInventory = [];
 
-        // ========== 通用 Sheety API 函数 ==========
+        // ========== Sheety API ==========
         async function fetchSheet(sheetName) {
-            const res = await fetch(`${SHEETY_BASE}/${sheetName}`);
+            const url = `${SHEETY_BASE}/${encodeURIComponent(sheetName)}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status} for ${sheetName}`);
             const json = await res.json();
             return json[sheetName] || [];
         }
 
         async function addRecord(sheetName, record) {
-            const res = await fetch(`${SHEETY_BASE}/${sheetName}`, {
+            const url = `${SHEETY_BASE}/${encodeURIComponent(sheetName)}`;
+            const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ [sheetName.slice(0, -1)]: record }) // Sheety 需要对象包装，去掉尾部"s"
+                body: JSON.stringify({ [sheetName.slice(0, -1)]: record }) // 去掉尾部"s"
             });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return res.json();
         }
 
         // ========== 加载所有数据 ==========
         async function loadAllData() {
             try {
-                const [exp, cap, rev] = await Promise.all([
+                const [exp, cap, rev, bud, ast, pft, cf, inv] = await Promise.all([
                     fetchSheet(SHEETS.expenses),
                     fetchSheet(SHEETS.capital),
-                    fetchSheet(SHEETS.revenue)
+                    fetchSheet(SHEETS.revenue),
+                    fetchSheet(SHEETS.budget),
+                    fetchSheet(SHEETS.assets),
+                    fetchSheet(SHEETS.profit).catch(() => []),
+                    fetchSheet(SHEETS.cashflow).catch(() => []),
+                    fetchSheet(SHEETS.inventory).catch(() => [])
                 ]);
+
+                // 映射支出明细
                 globalExpenses = exp.map(e => ({
-                    date: e['支出日期'] || e.date,
-                    item: e['项目名称'] || e.item,
-                    category: e['支出分类'] || e.category,
-                    amount: parseFloat(e['金额'] || e.amount) || 0,
-                    payer: e['支付人'] || e.payer,
+                    date: e['支出日期'] || '',
+                    category: e['支出分类'] || '',
+                    amount: parseFloat(e['金额'] || e['amount'] || 0),
+                    payer: e['支付人'] || ''
                 }));
+
+                // 映射股东出资
                 globalCapital = cap.map(c => ({
-                    date: c['日期'] || c.date,
-                    shareholder: c['股东'] || c.shareholder,
-                    amount: parseFloat(c['金额'] || c.amount) || 0,
+                    shareholder: c['股东'] || '',
+                    amount: parseFloat(c['金额'] || 0)
                 }));
+
+                // 映射营业收入
                 globalRevenue = rev.map(r => ({
-                    date: r['日期'] || r.date,
-                    wx: parseFloat(r['微信收入'] || r.wx) || 0,
-                    ali: parseFloat(r['支付宝收入'] || r.ali) || 0,
-                    cash: parseFloat(r['现金收入'] || r.cash) || 0,
-                    vip: parseFloat(r['会员充值'] || r.vip) || 0,
-                    other: parseFloat(r['其他收入'] || r.other) || 0,
+                    date: r['日期'] || '',
+                    wx: parseFloat(r['微信收入'] || 0),
+                    ali: parseFloat(r['支付宝收入'] || 0),
+                    cash: parseFloat(r['现金收入'] || 0),
+                    vip: parseFloat(r['会员充值'] || 0),
+                    other: parseFloat(r['其他收入'] || 0)
                 }));
+
+                // 待支出预算
+                globalBudget = bud.map(b => ({
+                    item: b['项目名称'] || '',
+                    amount: parseFloat(b['预算金额'] || 0)
+                }));
+
+                // 固定资产
+                globalAssets = ast.map(a => ({
+                    name: a['资产名称'] || '',
+                    amount: parseFloat(a['采购金额'] || 0)
+                }));
+
+                // 利润表
+                globalProfit = pft.map(p => ({
+                    month: p['月份'] || '',
+                    profit: parseFloat(p['利润'] || 0)
+                }));
+
+                // 现金流（可选）
+                globalCashflow = cf.map(c => ({
+                    date: c['日期'] || '',
+                    income: parseFloat(c['收入'] || 0),
+                    expense: parseFloat(c['支出'] || 0)
+                }));
+
+                // 库存（可选，用于库存预警）
+                globalInventory = inv.map(i => ({
+                    name: i['品名'] || '',
+                    stock: parseFloat(i['库存数量'] || 0),
+                    warning: parseFloat(i['库存预警值'] || 0)
+                }));
+
                 return true;
             } catch (err) {
-                console.error('加载数据失败', err);
-                alert('无法加载云端数据，请检查 API 地址或网络连接。');
+                console.error('数据加载失败', err);
+                document.getElementById('kpiGrid').innerHTML = `<div style="color:red;padding:20px;">加载数据失败：${err.message}<br>请检查API地址和工作表名称。</div>`;
                 return false;
             }
         }
 
-        // ========== 计算汇总指标 ==========
+        // ========== KPI 计算 ==========
         function getKPIs() {
             const totalCapital = globalCapital.reduce((s, c) => s + c.amount, 0);
             const totalExp = globalExpenses.reduce((s, e) => s + e.amount, 0);
-            const totalBud = 41910; // 可根据预算表动态加载，这里先用固定值
+            const totalBud = globalBudget.reduce((s, b) => s + b.amount, 0);
+            const totalAssets = globalAssets.reduce((s, a) => s + a.amount, 0);
             const totalRev = globalRevenue.reduce((s, r) => s + r.wx + r.ali + r.cash + r.vip + r.other, 0);
-            const totalCost = totalExp * 0.7; // 估算
-            const cumProfit = Math.max(0, totalRev - totalCost);
+            const cumProfit = globalProfit.length > 0
+                ? globalProfit.reduce((s, p) => s + p.profit, 0)
+                : Math.max(0, totalRev - totalExp); // fallback
+            const gap = Math.max(0, totalExp + totalBud - totalCapital);
             const payback = totalCapital > 0 ? Math.min(100, Math.round((cumProfit / totalCapital) * 100)) : 0;
-            return { totalCapital, totalExp, totalBud, totalRev, cumProfit, payback };
+            // 库存预警数量
+            const lowStock = globalInventory.filter(i => i.stock <= i.warning).length;
+
+            return { totalCapital, totalExp, totalBud, totalAssets, totalRev, cumProfit, gap, payback, lowStock };
         }
 
-        // ========== 渲染仪表盘 ==========
+        // ========== 渲染 KPI ==========
         function renderKPIs() {
             const k = getKPIs();
             const items = [
-                { label: '总出资', value: '¥' + k.totalCapital.toLocaleString(), cls: 'accent' },
-                { label: '已支出', value: '¥' + k.totalExp.toLocaleString(), cls: '' },
-                { label: '待支出', value: '¥' + k.totalBud.toLocaleString(), cls: 'gold' },
-                { label: '资金缺口', value: '¥' + Math.max(0, k.totalExp + k.totalBud - k.totalCapital).toLocaleString(), cls: 'danger' },
-                { label: '本月营业额', value: '¥' + k.totalRev.toLocaleString(), cls: 'accent' },
-                { label: '累计利润(估)', value: '¥' + k.cumProfit.toLocaleString(), cls: 'success' },
-                { label: '回本进度', value: k.payback + '%', cls: 'gold' },
+                { label: '总出资', value: '¥' + k.totalCapital.toLocaleString() },
+                { label: '已支出', value: '¥' + k.totalExp.toLocaleString() },
+                { label: '待支出', value: '¥' + k.totalBud.toLocaleString() },
+                { label: '资金缺口', value: '¥' + k.gap.toLocaleString(), color: '#e05555' },
+                { label: '固定资产', value: '¥' + k.totalAssets.toLocaleString() },
+                { label: '本月营业额', value: '¥' + k.totalRev.toLocaleString() },
+                { label: '累计利润', value: '¥' + k.cumProfit.toLocaleString(), color: '#4caf84' },
+                { label: '回本进度', value: k.payback + '%', color: '#d4a853' },
+                { label: '库存预警', value: k.lowStock + ' 项', color: k.lowStock > 0 ? '#e05555' : '#4caf84' }
             ];
-            const html = items.map(i => `
+            document.getElementById('kpiGrid').innerHTML = items.map(i => `
                 <div class="kpi-card">
                     <div class="kpi-label">${i.label}</div>
-                    <div class="kpi-value" style="color:${i.cls==='gold'?'#d4a853':i.cls==='danger'?'#e05555':i.cls==='success'?'#4caf84':'#fff'}">${i.value}</div>
+                    <div class="kpi-value" style="color:${i.color || '#fff'}">${i.value}</div>
                 </div>`).join('');
-            document.getElementById('kpiGrid').innerHTML = html;
         }
 
+        // ========== 图表 ==========
         function drawCharts() {
             // 成本占比饼图
             const catMap = {};
             globalExpenses.forEach(e => { catMap[e.category] = (catMap[e.category] || 0) + e.amount; });
             const catLabels = Object.keys(catMap);
             const catValues = Object.values(catMap);
-            new Chart(document.getElementById('chartCostPie'), {
+            if (window.costChart) window.costChart.destroy();
+            window.costChart = new Chart(document.getElementById('chartCostPie'), {
                 type: 'pie',
-                data: { labels: catLabels, datasets: [{ data: catValues, backgroundColor: ['#1e6eb5','#d4a853','#4caf84','#e05555','#8b5cf6','#f59e0b','#06b6d4'] }] },
+                data: {
+                    labels: catLabels,
+                    datasets: [{ data: catValues, backgroundColor: ['#1e6eb5','#d4a853','#4caf84','#e05555','#8b5cf6','#f59e0b','#06b6d4'] }]
+                },
                 options: { plugins: { legend: { labels: { color: '#ccc' } } } }
             });
 
-            // 股东出资占比
+            // 股东出资占比饼图
             const shMap = {};
             globalCapital.forEach(c => { shMap[c.shareholder] = (shMap[c.shareholder] || 0) + c.amount; });
-            new Chart(document.getElementById('chartCapitalPie'), {
+            if (window.capChart) window.capChart.destroy();
+            window.capChart = new Chart(document.getElementById('chartCapitalPie'), {
                 type: 'pie',
-                data: { labels: Object.keys(shMap), datasets: [{ data: Object.values(shMap), backgroundColor: ['#1e6eb5','#d4a853','#4caf84'] }] },
+                data: {
+                    labels: Object.keys(shMap),
+                    datasets: [{ data: Object.values(shMap), backgroundColor: ['#1e6eb5','#d4a853','#4caf84'] }]
+                },
                 options: { plugins: { legend: { labels: { color: '#ccc' } } } }
             });
 
-            // 营业额趋势
-            const months = ['2025-02','2025-03'];
-            const revByMonth = months.map(m => globalRevenue.filter(r => r.date.startsWith(m)).reduce((s, r) => s + r.wx + r.ali + r.cash + r.vip + r.other, 0));
-            new Chart(document.getElementById('chartRevenueTrend'), {
+            // 营业额趋势（按月汇总）
+            const monthMap = {};
+            globalRevenue.forEach(r => {
+                const m = r.date.substring(0, 7);
+                if (!monthMap[m]) monthMap[m] = 0;
+                monthMap[m] += r.wx + r.ali + r.cash + r.vip + r.other;
+            });
+            const months = Object.keys(monthMap).sort();
+            const revValues = months.map(m => monthMap[m]);
+            if (window.revChart) window.revChart.destroy();
+            window.revChart = new Chart(document.getElementById('chartRevenueTrend'), {
                 type: 'line',
-                data: { labels: months, datasets: [{ label: '营业额', data: revByMonth, borderColor: '#5bb8f0' }] },
+                data: {
+                    labels: months,
+                    datasets: [{ label: '营业额', data: revValues, borderColor: '#5bb8f0', backgroundColor: 'rgba(91,184,240,0.1)' }]
+                },
                 options: { scales: { y: { ticks: { color: '#ccc' } }, x: { ticks: { color: '#ccc' } } } }
             });
 
-            // 利润趋势（简单估算）
-            const profits = revByMonth.map(v => Math.max(0, v - 15000));
-            new Chart(document.getElementById('chartProfitTrend'), {
+            // 利润趋势（如果有利润表直接使用，否则用估算）
+            let profitLabels = months;
+            let profitValues = revValues.map(v => Math.max(0, v - 15000)); // fallback
+            if (globalProfit.length > 0) {
+                profitLabels = globalProfit.map(p => p.month);
+                profitValues = globalProfit.map(p => p.profit);
+            }
+            if (window.pftChart) window.pftChart.destroy();
+            window.pftChart = new Chart(document.getElementById('chartProfitTrend'), {
                 type: 'line',
-                data: { labels: months, datasets: [{ label: '利润', data: profits, borderColor: '#4caf84' }] },
+                data: {
+                    labels: profitLabels,
+                    datasets: [{ label: '利润', data: profitValues, borderColor: '#4caf84', backgroundColor: 'rgba(76,175,132,0.1)' }]
+                },
                 options: { scales: { y: { ticks: { color: '#ccc' } }, x: { ticks: { color: '#ccc' } } } }
             });
         }
@@ -237,7 +319,7 @@
             };
             try {
                 await addRecord(SHEETS.expenses, record);
-                document.getElementById('statusMsg').textContent = '✅ 支出已提交！3秒后刷新数据...';
+                document.getElementById('statusMsg').textContent = '✅ 已提交，刷新中...';
                 setTimeout(async () => {
                     await loadAllData();
                     renderKPIs();
@@ -251,8 +333,8 @@
 
         // ========== 初始化 ==========
         (async function init() {
-            const success = await loadAllData();
-            if (success) {
+            const ok = await loadAllData();
+            if (ok) {
                 renderKPIs();
                 drawCharts();
             }
